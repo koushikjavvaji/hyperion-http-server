@@ -1,13 +1,15 @@
 #pragma once
 
-namespace hyperion {
+namespace hyperion
+{
 
-    class Server {
-        public: 
-            explicit Server(int port);
-            void start();
+    class Server
+    {
+    public:
+        explicit Server(int port);
+        void start();
 
-        private:
-            int port_;    
+    private:
+        int port_;
     };
 }
