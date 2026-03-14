@@ -1,12 +1,10 @@
 #include <hyperion/server.h>
+#include <hyperion/thread_pool.h>
 
 #include <iostream>
-#include <thread>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-
-extern void handle_connection(int);
 
 namespace hyperion
 {
@@ -32,9 +30,11 @@ namespace hyperion
             return;
         }
 
-        listen(server_fd, 10);
+        listen(server_fd, SOMAXCONN);
 
         std::cout << "Hyperion server running on port " << port_ << std::endl;
+
+        ThreadPool pool(4); // 4 worker threads
 
         while (true)
         {
@@ -44,9 +44,7 @@ namespace hyperion
             if (client_socket < 0)
                 continue;
 
-            std::thread t(handle_connection, client_socket);
-
-            t.detach();
+            pool.enqueue(client_socket);
         }
     }
 
