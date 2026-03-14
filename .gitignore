@@ -1,0 +1,10 @@
+# CMake build folder
+build/
+
+# Compiled binaries
+*.out
+*.o
+*.exe
+
+# macOS files
+.DS_Store
