@@ -1,4 +1,5 @@
 #include <hyperion/server.h>
+#include <hyperion/file_cache.h>
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -19,21 +20,19 @@ namespace hyperion
                   << " threads"
                   << std::endl;
 
-        // spawn num_threads - 1 background threads
-        // main thread will run the last one
-        std::vector<std::thread> threads;
+        // load all files into memory ONCE at startup
+        FileCache::instance().load_all();
+        std::cout << "All files cached in memory" << std::endl;
 
+        std::vector<std::thread> threads;
         for (int i = 0; i < num_threads - 1; i++)
         {
             threads.emplace_back([this]()
                                  { start_kqueue_server(port_); });
         }
 
-        // main thread runs its own event loop
-        // blocks here forever
         start_kqueue_server(port_);
 
-        // if somehow we get here, wait for all threads
         for (auto &t : threads)
         {
             t.join();

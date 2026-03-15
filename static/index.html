@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hyperion Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #ffffff;
+            font-family: 'Courier New', monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .title {
+            font-size: 64px;
+            font-weight: bold;
+            background: linear-gradient(90deg, #00d2ff, #7b2ff7);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: transparent;
+            margin-bottom: 16px;
+        }
+
+        .subtitle {
+            font-size: 20px;
+            color: #888;
+            margin-bottom: 48px;
+        }
+
+        .stats {
+            display: flex;
+            gap: 32px;
+            justify-content: center;
+            margin-bottom: 48px;
+            flex-wrap: wrap;
+        }
+
+        .stat-box {
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 12px;
+            padding: 24px 32px;
+            min-width: 160px;
+            transition: border-color 0.3s;
+        }
+
+        .stat-box:hover {
+            border-color: #00d2ff;
+        }
+
+        .stat-number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #00d2ff;
+            transition: color 0.3s;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: #555;
+            margin-top: 8px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 999px;
+            padding: 8px 20px;
+            font-size: 13px;
+            color: #555;
+            margin: 4px;
+        }
+
+        .badge span {
+            color: #00d2ff;
+        }
+
+        .live-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #00ff88;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        .live-label {
+            font-size: 13px;
+            color: #555;
+            margin-bottom: 24px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="title">HYPERION</div>
+        <div class="subtitle">High Performance HTTP Server</div>
+
+        <div class="live-label">
+            <span class="live-dot"></span>
+            live metrics
+        </div>
+
+        <div class="stats">
+            <div class="stat-box">
+                <div class="stat-number" id="req-total">—</div>
+                <div class="stat-label">Total Requests</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-number" id="req-per-sec">—</div>
+                <div class="stat-label">Requests / sec</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-number" id="connections">—</div>
+                <div class="stat-label">Active Connections</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-number" id="uptime">—</div>
+                <div class="stat-label">Uptime (seconds)</div>
+            </div>
+        </div>
+
+        <div>
+            <span class="badge"><span>kqueue</span> event loop</span>
+            <span class="badge"><span>keep-alive</span> connections</span>
+            <span class="badge"><span>lock-free</span> metrics</span>
+            <span class="badge"><span>C++17</span></span>
+        </div>
+    </div>
+
+    <script>
+        function formatNumber(n) {
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toString();
+        }
+
+        async function fetchMetrics() {
+            try {
+                const res = await fetch('/metrics');
+                const data = await res.json();
+
+                document.getElementById('req-total').textContent =
+                    formatNumber(data.requests_total);
+
+                document.getElementById('req-per-sec').textContent =
+                    formatNumber(data.requests_per_sec);
+
+                document.getElementById('connections').textContent =
+                    data.active_connections;
+
+                document.getElementById('uptime').textContent =
+                    data.uptime_seconds + 's';
+
+            } catch (e) {
+                console.log('fetch failed', e);
+            }
+        }
+
+        // fetch immediately then every second
+        fetchMetrics();
+        setInterval(fetchMetrics, 1000);
+    </script>
+</body>
+
+</html>

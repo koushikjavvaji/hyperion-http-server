@@ -1,16 +1,53 @@
 #include <unistd.h>
 #include <errno.h>
+#include <string>
 #include "hyperion/connection.h"
+#include "hyperion/http_parser.h"
+#include "hyperion/router.h"
+#include "hyperion/metrics.h"
 
-static const char RESPONSE[] =
-    "HTTP/1.1 200 OK\r\n"
-    "Content-Type: text/plain\r\n"
-    "Content-Length: 19\r\n"
-    "Connection: keep-alive\r\n"
-    "\r\n"
-    "Hello from Hyperion";
+static std::string build_response(int status_code,
+                                  const std::string &status_text,
+                                  const std::string &content_type,
+                                  const std::string &body)
+{
+    std::string response;
+    response.reserve(256 + body.size());
 
-static const size_t RESPONSE_LEN = sizeof(RESPONSE) - 1;
+    response += "HTTP/1.1 ";
+    response += std::to_string(status_code);
+    response += " ";
+    response += status_text;
+    response += "\r\n";
+    response += "Content-Type: ";
+    response += content_type;
+    response += "\r\n";
+    response += "Content-Length: ";
+    response += std::to_string(body.size());
+    response += "\r\n";
+    response += "Connection: keep-alive\r\n";
+    response += "\r\n";
+    response += body;
+
+    return response;
+}
+
+static std::string status_text(int code)
+{
+    switch (code)
+    {
+    case 200:
+        return "OK";
+    case 400:
+        return "Bad Request";
+    case 404:
+        return "Not Found";
+    case 500:
+        return "Internal Server Error";
+    default:
+        return "OK";
+    }
+}
 
 void Connection::handle_read()
 {
@@ -26,24 +63,18 @@ void Connection::handle_read()
         }
         else if (bytes == 0)
         {
-            // Client closed connection cleanly
             state = ConnectionState::CLOSED;
             return;
         }
         else
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
-                // No more data right now
                 break;
-            }
-            // Real error
             state = ConnectionState::CLOSED;
             return;
         }
     }
 
-    // Complete HTTP request ends with blank line
     if (read_buffer.find("\r\n\r\n") != std::string::npos)
     {
         state = ConnectionState::PROCESSING;
@@ -52,7 +83,32 @@ void Connection::handle_read()
 
 void Connection::process_request()
 {
-    write_buffer.assign(RESPONSE, RESPONSE_LEN);
+
+    // ── Track request ──────────────────────────────────────────────
+    hyperion::Metrics::instance().record_request();
+
+    // ── Parse ──────────────────────────────────────────────────────
+    hyperion::ParsedRequest req;
+    bool ok = hyperion::HttpParser::parse(read_buffer, req);
+
+    if (!ok || !req.valid)
+    {
+        write_buffer = build_response(
+            400, "Bad Request", "text/plain", "Bad Request");
+        write_offset = 0;
+        state = ConnectionState::WRITING_RESPONSE;
+        return;
+    }
+
+    // ── Route ──────────────────────────────────────────────────────
+    hyperion::RouteResult result = hyperion::Router::handle(req);
+
+    // ── Build response ─────────────────────────────────────────────
+    write_buffer = build_response(
+        result.status_code,
+        status_text(result.status_code),
+        result.content_type,
+        result.body);
     write_offset = 0;
     state = ConnectionState::WRITING_RESPONSE;
 }
@@ -74,7 +130,6 @@ void Connection::handle_write()
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                // Kernel send buffer full — wait for EVFILT_WRITE event
                 needs_write_watch = true;
                 return;
             }
@@ -83,7 +138,6 @@ void Connection::handle_write()
         }
     }
 
-    // Response fully sent — reuse connection for next request (keep-alive)
     read_buffer.clear();
     write_buffer.clear();
     write_offset = 0;

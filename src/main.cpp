@@ -6,9 +6,8 @@
 int main()
 {
     // int num_cores = std::thread::hardware_concurrency();
-    // on your MacBook Air M2 = 8
 
-    int num_cores = 4; // for testing on 4-core machines
+    int num_cores = 4;
     std::cout << "Starting Hyperion on "
               << num_cores
               << " cores"
