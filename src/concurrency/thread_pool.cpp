@@ -1,8 +1,6 @@
 #include "hyperion/thread_pool.h"
 #include <unistd.h>
 
-extern void handle_connection(int);
-
 ThreadPool::ThreadPool(size_t threads)
 {
     for (size_t i = 0; i < threads; ++i)
@@ -37,7 +35,5 @@ void ThreadPool::worker_loop()
             client_socket = tasks.front();
             tasks.pop();
         }
-
-        handle_connection(client_socket);
     }
 }

@@ -2,7 +2,6 @@
 
 namespace hyperion
 {
-
     class Server
     {
     public:

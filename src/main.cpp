@@ -1,6 +1,7 @@
-#include<hyperion/server.h>
+#include <hyperion/server.h>
 
-int main() {
+int main()
+{
     hyperion::Server server(8080);
     server.start();
     return 0;
