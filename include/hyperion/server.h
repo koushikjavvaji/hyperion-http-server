@@ -6,7 +6,7 @@ namespace hyperion
     {
     public:
         explicit Server(int port);
-        void start();
+        void start(int num_threads = 1);
 
     private:
         int port_;

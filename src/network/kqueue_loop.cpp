@@ -26,6 +26,11 @@ void start_kqueue_server(int port)
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
+    // ── THIS IS THE NEW LINE ───────────────────────────────────────
+    // Allows multiple threads to bind to same port
+    // OS distributes connections across all threads
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY;
@@ -35,15 +40,14 @@ void start_kqueue_server(int port)
     listen(server_fd, SOMAXCONN);
     set_non_blocking(server_fd);
 
-    // ── 2. Create kqueue ───────────────────────────────────────────
+    // ── 2. Each thread gets its own kqueue ─────────────────────────
     int kq = kqueue();
 
     struct kevent change;
     EV_SET(&change, server_fd, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, NULL);
     kevent(kq, &change, 1, NULL, 0, NULL);
 
-    // ── 3. Pre-allocate connection pool ───────────────────────────
-    // Avoids new/delete on every connection — reduces allocator pressure
+    // ── 3. Each thread gets its own connection pool ────────────────
     std::vector<Connection *> pool;
     pool.reserve(POOL_SIZE);
     for (int i = 0; i < POOL_SIZE; i++)
@@ -57,20 +61,16 @@ void start_kqueue_server(int port)
 
     struct kevent events[MAX_EVENTS];
 
-    std::cout << "Hyperion kqueue server running on port " << port << std::endl;
-
-    // ── 4. Event loop ──────────────────────────────────────────────
+    // ── 4. Event loop — same as before ─────────────────────────────
     while (true)
     {
 
-        // Block until OS signals something is ready — O(1)
         int n = kevent(kq, NULL, 0, events, MAX_EVENTS, NULL);
 
         for (int i = 0; i < n; i++)
         {
             int fd = (int)events[i].ident;
 
-            // ── New client connecting ──────────────────────────────
             if (fd == server_fd)
             {
                 while (true)
@@ -81,7 +81,6 @@ void start_kqueue_server(int port)
 
                     set_non_blocking(client_fd);
 
-                    // Grab from pool instead of heap allocation
                     Connection *conn;
                     if (pool_idx < POOL_SIZE)
                     {
@@ -95,7 +94,6 @@ void start_kqueue_server(int port)
 
                     connections[client_fd] = conn;
 
-                    // Register client fd for read events
                     struct kevent ce;
                     EV_SET(&ce, client_fd, EVFILT_READ, EV_ADD | EV_CLEAR, 0, 0, NULL);
                     kevent(kq, &ce, 1, NULL, 0, NULL);
@@ -103,28 +101,21 @@ void start_kqueue_server(int port)
                 continue;
             }
 
-            // ── Existing client has activity ───────────────────────
             auto it = connections.find(fd);
             if (it == connections.end())
                 continue;
             Connection *conn = it->second;
 
-            // Handle EV_EOF — client disconnected
             if (events[i].flags & EV_EOF)
             {
                 conn->close_connection();
                 connections.erase(it);
-                // Return to pool
                 if (pool_idx > 0)
                     pool[--pool_idx] = conn;
                 else
                     delete conn;
                 continue;
             }
-
-            // ── Run state machine ──────────────────────────────────
-            // Fall through each state immediately without waiting
-            // for next kqueue event — this was the original bug
 
             if (conn->state == ConnectionState::READING_REQUEST)
             {
@@ -140,19 +131,15 @@ void start_kqueue_server(int port)
             {
                 conn->handle_write();
 
-                // Kernel send buffer was full during write
-                // Register EVFILT_WRITE so kqueue wakes us when ready
                 if (conn->needs_write_watch)
                 {
                     conn->needs_write_watch = false;
                     struct kevent we;
-                    // EV_ONESHOT — fires once then removes itself
                     EV_SET(&we, fd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, NULL);
                     kevent(kq, &we, 1, NULL, 0, NULL);
                 }
             }
 
-            // Clean up closed connections
             if (conn->state == ConnectionState::CLOSED)
             {
                 conn->close_connection();
