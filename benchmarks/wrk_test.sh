@@ -25,7 +25,7 @@ fi
 
 echo "Running benchmark..."
 
-wrk -t4 -c100 -d10s $URL > $OUTPUT_FILE
+wrk -t4 -c5000 -d10s $URL > $OUTPUT_FILE
 
 echo "Stopping server..."
 
